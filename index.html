@@ -42,15 +42,16 @@ tfoot td{font-weight:700;border-top:2px solid var(--bd)}
 .ti{width:88px;text-align:right;padding:3px 4px}
 .nm{cursor:pointer}.nm:hover{color:var(--ac)}
 </style></head><body>
-<header><h1>Tepelné ztráty místnosti VK <small>v0.1.1 · poslední aktualizace 23. 10. 2026</small></h1></header>
+<header><h1>Tepelné ztráty místnosti VK <small>v0.1.7 · poslední aktualizace 23. 10. 2026</small></h1></header>
 <main>
 <aside id="side"></aside>
 <section>
 <div class="card">
 <div class="tb">
 <button id="bOrtho" onclick="tg('ortho')">Ortho</button><button id="bSnap" onclick="tg('snap')">Snap</button>
-<select id="grid" onchange="S.grid=+this.value;draw()" style="width:auto"><option value="0.05">Rastr 0,05 m</option><option value="0.1" selected>Rastr 0,1 m</option><option value="0.25">Rastr 0,25 m</option><option value="0.5">Rastr 0,5 m</option><option value="1">Rastr 1 m</option></select>
+<select id="grid" onchange="S.grid=+this.value;draw()" style="width:auto"><option value="0.01">Rastr 0,01 m</option><option value="0.05">Rastr 0,05 m</option><option value="0.1" selected>Rastr 0,1 m</option><option value="0.25">Rastr 0,25 m</option><option value="0.5">Rastr 0,5 m</option><option value="1">Rastr 1 m</option></select>
 <button class="p" onclick="closePoly()">Uzavřít obvod (C)</button>
+<button id="bDelWall" onclick="if(S.closed&&S.sel>=0)delWall(S.sel)" title="Odstranit vybranou stěnu (Delete)">Odstranit stěnu (Del)</button>
 <button onclick="rect()">Ukázka 5×4 m</button><button onclick="resetAll()">Nový půdorys</button>
 </div>
 <div style="position:relative"><svg id="svg"></svg><div class="cz"><button onclick="undo()">Zpět</button><button onclick="zoom(.8)">－</button><button onclick="zoom(1.25)">＋</button></div></div>
@@ -77,6 +78,12 @@ const area=()=>S.closed?Math.abs(polyS()):0;
 const Aof=o=>o.lock?area():o.A;
 const L=i=>dist(S.pts[i],S.pts[(i+1)%S.pts.length]);
 const r6=v=>Math.round(v*1e6)/1e6;
+const defW=()=>({mode:'custom',tx:20,U:.3,ops:[]});
+const addPt=p=>{S.pts.push(p);if(S.pts.length>1)S.walls.push(defW())};
+const popPt=()=>{if(S.pts.length>1)S.walls.pop();S.pts.pop()};
+function delWall(i){if(!S.closed||i<0||i>=S.walls.length)return;
+S.pts=[...S.pts.slice(i+1),...S.pts.slice(0,i+1)];S.walls=[...S.walls.slice(i+1),...S.walls.slice(0,i)];
+S.closed=false;S.sel=-1;S.buf='';side();update()}
 /* ---------- panels ---------- */
 const inp=(p,l,dis)=>{const st=/\.U$/.test(p)?.01:/ops\.\d+\.n$/.test(p)?1:/\.(w|h|n|A)$/.test(p)?.1:'any',mn=/\.(w|h|n|U|V|A)$/.test(p)?'min="0"':'';return `<label>${l}<input type="number" step="${st}" ${mn} value="${get(p)}" ${dis?'disabled':''} oninput="N('${p}',this.value,this)"></label>`};
 const txc=(p,l)=>{const o=get(p),m=o.mode;return `<label>${l}<select onchange="M('${p}.mode',this.value)">${[['te','Venkovní tₑ'],['20','Vytápěný soused 20 °C'],['10','Nevytápěná chodba 10 °C'],['custom','Vlastní']].map(([v,t])=>`<option value="${v}" ${m===v?'selected':''}>${t}</option>`).join('')}</select></label>`+(m==='custom'?inp(p+'.tx','t [°C]'):`<label>t [°C]<b data-tx="${p}" style="padding:6px 0">${eff(o)}</b></label>`)};
@@ -97,7 +104,7 @@ const addOp=t=>{S.walls[S.sel].ops.push(t==='Okno'?{type:t,w:1.2,h:1.5,n:1,U:1.1
 const delOp=j=>{S.walls[S.sel].ops.splice(j,1);side();update()};
 /* ---------- výpočet ---------- */
 function calc(){const {ti,h}=S.G,rows=[];let warn='';
-S.walls.forEach((w,i)=>{const tx=eff(w),c={};let ao=0;
+(S.closed?S.walls:[]).forEach((w,i)=>{const tx=eff(w),c={};let ao=0;
 w.ops.forEach(o=>ao+=o.w*o.h*o.n);const g=L(i)*h;if(ao>g)warn=`Otvory ve stěně S${i+1} přesahují plochu stěny.`;
 rows.push([`Stěna ${i+1}`,Math.max(0,g-ao),w.U,ti-tx,0,0,i,'walls.'+i+'.U','walls.'+i]);
 w.ops.forEach((o,j)=>{c[o.type]=(c[o.type]||0)+1;rows.push([`${o.type} ${c[o.type]} ve Stěně ${i+1}${o.n>1?` (${o.n}×)`:''}`,o.w*o.h*o.n,o.U,ti-tx,0,1,i,'walls.'+i+'.ops.'+j+'.U','walls.'+i])})});
@@ -121,6 +128,13 @@ function dirU(l){const dx=S.cur.x-l.x,dy=S.cur.y-l.y;if(S.ortho)return Math.abs(
 function pv(){if(!S.cur)return null;let p={x:sn(S.cur.x),y:sn(S.cur.y)};const l=S.pts[S.pts.length-1];
 if(l){if(S.ortho){Math.abs(S.cur.x-l.x)>=Math.abs(S.cur.y-l.y)?p.y=l.y:p.x=l.x}
 const q=parseFloat(S.buf.replace(',','.'));if(S.buf&&q>0){const u=dirU(l);p={x:l.x+u.x*q,y:l.y+u.y*q}}}
+S.gd={x:null,y:null};
+if(!(S.buf&&parseFloat(S.buf.replace(',','.'))>0)){const th=12/S.view.sc;let fx=true,fy=true;
+if(l&&S.ortho){if(Math.abs(S.cur.x-l.x)>=Math.abs(S.cur.y-l.y))fy=false;else fx=false}
+let bx=th,by=th;S.pts.forEach(q=>{if(q===l)return;
+if(fx){const d=Math.abs(S.cur.x-q.x);if(d<bx){bx=d;S.gd.x=q}}
+if(fy){const d=Math.abs(S.cur.y-q.y);if(d<by){by=d;S.gd.y=q}}});
+if(S.gd.x)p.x=S.gd.x.x;if(S.gd.y)p.y=S.gd.y.y}
 return{x:r6(p.x),y:r6(p.y)}}
 function opn(i,a,dx,dy,l,sg){const ops=S.walls[i].ops,G=.15,pc=[];ops.forEach(o=>{for(let j=0;j<o.n;j++)pc.push(o)});if(!pc.length)return'';
 const tot=pc.reduce((t,o)=>t+o.w,0)+G*(pc.length-1),k=Math.min(1,l/tot);let s=(l-tot*k)/2,r='';
@@ -141,21 +155,24 @@ let cx=0,cy=0;P.forEach(p=>{cx+=p.x/n;cy+=p.y/n});
 h+=t(X(cx),Y(cy),`A = ${f(area())} m²`,'var(--ac)',14);
 P.forEach((a,i)=>{const b=P[(i+1)%n],x1=X(a.x),y1=Y(a.y),x2=X(b.x),y2=Y(b.y),sel=i===S.sel,l=L(i),dx=(b.x-a.x)/l,dy=(b.y-a.y)/l;
 h+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${sel?'var(--ac)':'var(--tx)'}" stroke-width="${sel?5:3}" stroke-linecap="round"/><line data-w="${i}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="18" style="cursor:pointer"/>`;
-h+=opn(i,a,dx,dy,l,s);h+=t((+x1+ +x2)/2+dy*s*22,(+y1+ +y2)/2-dx*s*22,`S${i+1} · ${f(l)} m`,sel?'var(--ac)':'var(--tx)')});
+h+=opn(i,a,dx,dy,l,s);h+=t((+x1+ +x2)/2+dy*s*22,(+y1+ +y2)/2-dx*s*22,`S${i+1} · ${f(l)} m · ${(+r6(eff(S.walls[i]))).toLocaleString('cs-CZ',{maximumFractionDigits:1})} °C`,sel?'var(--ac)':'var(--tx)')});
 P.forEach(p=>h+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="var(--tx)"/>`)}
 else{if(n>1)h+=`<polyline points="${P.map(p=>X(p.x)+','+Y(p.y)).join(' ')}" fill="none" stroke="var(--tx)" stroke-width="3"/>`;
 P.forEach((p,i)=>h+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${i?4:6}" fill="${i?'var(--tx)':'var(--ac)'}"/>`);
 const p=pv(),l=P[n-1];
 if(p){if(l){h+=`<line x1="${X(l.x)}" y1="${Y(l.y)}" x2="${X(p.x)}" y2="${Y(p.y)}" stroke="var(--ac)" stroke-width="2" stroke-dasharray="6 4"/>`+t((+X(l.x)+ +X(p.x))/2,(+Y(l.y)+ +Y(p.y))/2-14,f(dist(l,p))+' m','var(--ac)',13)}
+const gd=S.gd||{};
+if(gd.x)h+=`<line x1="${X(p.x)}" y1="${Y(gd.x.y)}" x2="${X(p.x)}" y2="${Y(p.y)}" stroke="var(--ac)" stroke-width="1" stroke-dasharray="2 4" opacity=".8"/><circle cx="${X(gd.x.x)}" cy="${Y(gd.x.y)}" r="7" fill="none" stroke="var(--ac)" stroke-width="1.5"/>`;
+if(gd.y)h+=`<line x1="${X(gd.y.x)}" y1="${Y(p.y)}" x2="${X(p.x)}" y2="${Y(p.y)}" stroke="var(--ac)" stroke-width="1" stroke-dasharray="2 4" opacity=".8"/><circle cx="${X(gd.y.x)}" cy="${Y(gd.y.y)}" r="7" fill="none" stroke="var(--ac)" stroke-width="1.5"/>`;
 h+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="none" stroke="var(--ac)" stroke-width="2"/>`}}
 svg.innerHTML=h;
 $('bOrtho').className=S.ortho?'on':'';$('bSnap').className=S.snap?'on':'';
-$('st').textContent=S.closed?'Klikni na stěnu pro úpravu vlastností a otvorů. Plocha podlahy: '+f(area())+' m².':
-`Klik = bod · napiš délku (m) + Enter${S.buf?' – zadáváš: '+S.buf+' m':''} · C = uzavřít (nebo klik na první bod) · Backspace = zpět · kolečko = zoom · Shift+tažení = posun`}
+$('st').textContent=S.closed?'Klikni na stěnu pro úpravu vlastností a otvorů; smazat ji můžeš tlačítkem v panelu nebo klávesou Delete a pak dokreslit. Plocha podlahy: '+f(area())+' m².':
+`Klik = bod (magnetizuje se na osy existujících bodů) · napiš délku (m) + Enter${S.buf?' – zadáváš: '+S.buf+' m':''} · C = uzavřít (nebo klik na první bod) · Backspace = zpět · kolečko = zoom · Shift+tažení = posun`}
 const tg=k=>{S[k]=!S[k];draw()};
 const zoom=k=>{S.view.sc=Math.min(400,Math.max(10,S.view.sc*k));draw()};
-function closePoly(){if(S.closed||S.pts.length<3)return;S.closed=true;S.walls=S.pts.map(()=>({mode:'custom',tx:20,U:.3,ops:[]}));S.sel=0;side();update()}
-function undo(){if(S.closed){S.closed=false;S.walls=[];S.sel=-1}else S.pts.pop();S.buf='';side();update()}
+function closePoly(){if(S.closed||S.pts.length<3)return;if(S.walls.length===S.pts.length-1)S.walls.push(defW());else S.walls=S.pts.map(defW);S.closed=true;S.sel=0;side();update()}
+function undo(){if(S.closed){S.closed=false;S.walls.pop();S.sel=-1}else popPt();S.buf='';side();update()}
 function resetAll(){S.pts=[];S.closed=false;S.walls=[];S.sel=-1;S.buf='';side();update()}
 function rect(){resetAll();S.pts=[{x:0,y:0},{x:5,y:0},{x:5,y:4},{x:0,y:4}];closePoly()}
 function mpos(e){const r=svg.getBoundingClientRect();return{mx:e.clientX-r.left,my:e.clientY-r.top}}
@@ -164,21 +181,22 @@ svg.addEventListener('pointerdown',e=>{moved=false;if(e.shiftKey||e.button===1){
 svg.addEventListener('pointermove',e=>{const {mx,my}=mpos(e);
 if(pan){moved=true;S.view.ox=pan.ox+e.clientX-pan.x;S.view.oy=pan.oy+e.clientY-pan.y}
 S.cur={x:(mx-S.view.ox)/S.view.sc,y:(my-S.view.oy)/S.view.sc};draw()});
-svg.addEventListener('pointerup',()=>{pan=null});
+svg.addEventListener('pointerup',()=>{pan=null});svg.addEventListener('pointercancel',()=>{pan=null});
+svg.addEventListener('mousedown',e=>{if(e.button===1)e.preventDefault()});svg.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault()});
 svg.addEventListener('click',e=>{if(moved)return;
 if(S.closed){const w=e.target.dataset&&e.target.dataset.w;if(w!==undefined){S.sel=+w;S.flash=1;side();update()}return}
 const {mx,my}=mpos(e);S.cur={x:(mx-S.view.ox)/S.view.sc,y:(my-S.view.oy)/S.view.sc};
 const p0=S.pts[0];if(S.pts.length>=3&&Math.hypot(mx-X(p0.x),my-Y(p0.y))<14){closePoly();return}
-const p=pv(),l=S.pts[S.pts.length-1];if(l&&dist(l,p)<1e-6)return;S.pts.push(p);S.buf='';draw();update()});
+const p=pv(),l=S.pts[S.pts.length-1];if(l&&dist(l,p)<1e-6)return;addPt(p);S.buf='';draw();update()});
 svg.addEventListener('wheel',e=>{e.preventDefault();const {mx,my}=mpos(e),k=e.deltaY<0?1.15:1/1.15,v=S.view,wx=(mx-v.ox)/v.sc,wy=(my-v.oy)/v.sc;
 v.sc=Math.min(400,Math.max(10,v.sc*k));v.ox=mx-wx*v.sc;v.oy=my-wy*v.sc;draw()},{passive:false});
 document.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||e.ctrlKey||e.metaKey)return;
 const k=e.key;
-if(S.closed){if(k==='Backspace'){undo()}return}
+if(S.closed){if(k==='Backspace'){undo()}else if(k==='Delete'&&S.sel>=0){delWall(S.sel)}return}
 if(/^[0-9.,]$/.test(k)){S.buf+=k===','?'.':k;draw()}
-else if(k==='Enter'){const q=parseFloat(S.buf),l=S.pts[S.pts.length-1];if(q>0&&l&&S.cur){S.pts.push(pv());S.buf='';draw();update()}else if(S.pts.length>=3)closePoly()}
+else if(k==='Enter'){const q=parseFloat(S.buf),l=S.pts[S.pts.length-1];if(q>0&&l&&S.cur){addPt(pv());S.buf='';draw();update()}else if(S.pts.length>=3)closePoly()}
 else if(k==='c'||k==='C'){closePoly()}
-else if(k==='Backspace'){e.preventDefault();if(S.buf)S.buf=S.buf.slice(0,-1);else S.pts.pop();draw();update()}
+else if(k==='Backspace'){e.preventDefault();if(S.buf)S.buf=S.buf.slice(0,-1);else popPt();draw();update()}
 else if(k==='Escape'){S.buf='';draw()}});
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 function roomCard(){return `<div class="card"><h2>Místnost</h2><div class="row"><label style="flex:0 0 90px">Číslo<input type="text" value="${esc(S.room.num)}" oninput="S.room.num=this.value"></label><label>Název<input type="text" value="${esc(S.room.name)}" oninput="S.room.name=this.value"></label></div><div class="row" style="margin-top:8px"><button onclick="saveRoom()">Uložit místnost</button><button onclick="$('lf').click()">Načíst místnost</button><input type="file" id="lf" accept=".json,application/json" hidden onchange="loadRoom(this)"></div></div>`}
@@ -232,11 +250,11 @@ const pk=(o,s,k)=>k.forEach(x=>{if(s&&s[x]!==undefined)o[x]=s[x]});
 pk(S.G,d.G,['ti','te','h']);pk(S.floor,d.floor,['lock','A','mode','tx','U']);pk(S.ceil,d.ceil,['lock','A','mode','tx','U']);pk(S.vent,d.vent,['mode','V','n','tsuMode','tsu']);
 S.room.num=String((d.room&&d.room.num)||'');S.room.name=String((d.room&&d.room.name)||'');
 S.pts=d.pts.map(p=>({x:p.x,y:p.y}));S.closed=!!d.closed;
-S.walls=d.closed?d.walls.map(w=>({mode:['te','20','10','custom'].includes(w.mode)?w.mode:'te',tx:+w.tx||0,U:+w.U||0,ops:(Array.isArray(w.ops)?w.ops:[]).map(o=>({type:o.type==='Dveře'?'Dveře':'Okno',w:+o.w||0,h:+o.h||0,n:Math.max(1,Math.round(+o.n)||1),U:+o.U||0}))})):[];
-if([.05,.1,.25,.5,1].includes(d.grid)){S.grid=d.grid;$('grid').value=d.grid}
+const mw=w=>({mode:['te','20','10','custom'].includes(w.mode)?w.mode:'te',tx:+w.tx||0,U:+w.U||0,ops:(Array.isArray(w.ops)?w.ops:[]).map(o=>({type:o.type==='Dveře'?'Dveře':'Okno',w:+o.w||0,h:+o.h||0,n:Math.max(1,Math.round(+o.n)||1),U:+o.U||0}))}),need=d.closed?d.pts.length:Math.max(0,d.pts.length-1);S.walls=Array.isArray(d.walls)&&d.walls.length===need?d.walls.map(mw):Array.from({length:need},defW);
+if([.01,.05,.1,.25,.5,1].includes(d.grid)){S.grid=d.grid;$('grid').value=d.grid}
 if(typeof d.ortho==='boolean')S.ortho=d.ortho;if(typeof d.snap==='boolean')S.snap=d.snap;
 S.sel=S.closed?0:-1;S.buf='';fit();side();update()}catch(e){alert('Soubor se nepodařilo načíst – není to uložená místnost z této aplikace.')}};r.readAsText(fl)}
-(window.claude?claude.use('downloads'):Promise.resolve(null)).then(d=>{DL=d}).catch(()=>{});
+try{Promise.resolve(window.claude&&typeof window.claude.use==='function'?window.claude.use('downloads'):null).then(d=>{DL=d||null}).catch(()=>{})}catch(e){}
 const pick=i=>{if(!S.closed)return;S.sel=i;S.flash=1;side();update();const e=document.querySelector('#side .flash');if(e)e.scrollIntoView({block:'nearest',behavior:'smooth'})};
 const TU=(p,v,el)=>{N(p,v,el);side()};
 const TX=(p,v)=>{v=parseFloat(String(v).replace(',','.'));if(isNaN(v))v=0;const o=get(p);o.mode='custom';o.tx=v;side();update()};
