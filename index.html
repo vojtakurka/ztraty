@@ -168,7 +168,7 @@ h+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="none" stroke="var(--ac)" s
 svg.innerHTML=h;
 $('bOrtho').className=S.ortho?'on':'';$('bSnap').className=S.snap?'on':'';
 $('st').textContent=S.closed?'Klikni na stěnu pro úpravu vlastností a otvorů; smazat ji můžeš tlačítkem v panelu nebo klávesou Delete a pak dokreslit. Plocha podlahy: '+f(area())+' m².':
-`Klik = bod (magnetizuje se na osy existujících bodů) · napiš délku (m) + Enter${S.buf?' – zadáváš: '+S.buf+' m':''} · C = uzavřít (nebo klik na první bod) · Backspace = zpět · kolečko = zoom · Shift+tažení = posun`}
+`Klik = bod · napiš délku (m) + Enter${S.buf?' – zadáváš: '+S.buf+' m':''} · C = uzavřít (nebo klik na první bod) · Backspace = zpět · kolečko = zoom · Shift+tažení = posun`}
 const tg=k=>{S[k]=!S[k];draw()};
 const zoom=k=>{S.view.sc=Math.min(400,Math.max(10,S.view.sc*k));draw()};
 function closePoly(){if(S.closed||S.pts.length<3)return;if(S.walls.length===S.pts.length-1)S.walls.push(defW());else S.walls=S.pts.map(defW);S.closed=true;S.sel=0;side();update()}
